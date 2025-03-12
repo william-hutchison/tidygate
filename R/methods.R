@@ -204,12 +204,13 @@ gate_int.numeric = 	function(  .dim1,
 #' @importFrom ggplot2 scale_colour_manual
 #' @importFrom ggplot2 scale_shape_manual
 #' @importFrom ggplot2 scale_alpha_manual
-#' @importFrom ggplot2 scale_shape_manual
+#' @importFrom ggplot2 scale_colour_distiller
 #' @importFrom ggplot2 guides
 #' @importFrom ggplot2 margin
 #' @importFrom ggplot2 theme_bw
 #' @importFrom ggplot2 theme_void
 #' @importFrom ggplot2 theme
+#' @importFrom ggplot2 ggsave
 #' @importFrom plotly ggplotly
 #' @importFrom plotly layout
 #' @importFrom plotly config
@@ -310,7 +311,7 @@ gate_interactive <-
         plot <- 
           plot + 
           ggplot2::aes(colour = !!colour) +
-          ggplot2::scale_colour_distiller(palette="Spectral")
+          ggplot2::scale_colour_distiller(palette = "Spectral")
         
       # Set to equal constant if not a column symbol and remove legend
       } else { 
@@ -383,17 +384,19 @@ gate_interactive <-
       )
 
       # Save plot as image
-      temp_file <-  
+      temp_file <-
         tempfile(fileext = ".png")
 
       temp_file |>
-        ggsave(plot = plot, width = 8, height = 8, dpi = 300)
+        ggplot2::ggsave(plot = plot, width = 8, height = 8, dpi = 300)
 
       # Create plot with only borders, axis and margins
       plot_empty <-
         data |>
-        ggplot2::ggplot(ggplot2::aes(x = x, y = y, key = .key)) +
-        ggplot2::theme_minimal()
+        ggplot2::ggplot(ggplot2::aes(x = x, y = y, key = .key, colour = !!colour, shape = !!shape, alpha = !!alpha, size = !!size)) +
+        ggplot2::geom_point(alpha = 0) +
+        ggplot2::scale_colour_distiller(palette = "Spectral") +
+        ggplot2::theme_bw() 
 
       # Combine plots
       plot <-
