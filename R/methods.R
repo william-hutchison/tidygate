@@ -206,10 +206,16 @@ gate_int.numeric = 	function(  .dim1,
 #' @importFrom ggplot2 scale_alpha_manual
 #' @importFrom ggplot2 scale_shape_manual
 #' @importFrom ggplot2 guides
+#' @importFrom ggplot2 margin
 #' @importFrom ggplot2 theme_bw
+#' @importFrom ggplot2 theme_void
 #' @importFrom ggplot2 theme
+#' @importFrom plotly ggplotly
+#' @importFrom plotly layout
+#' @importFrom plotly config
 #' @importFrom shiny shinyApp
 #' @importFrom shiny runApp
+#' @importFrom xfun base64_uri
 #' 
 #' @param x A vector representing the X dimension. 
 #' @param y A vector representing the Y dimension.
@@ -224,7 +230,7 @@ gate_int.numeric = 	function(  .dim1,
 #' @return A vector of strings, of the gates each X and Y coordinate pair is within. If gates are
 #' drawn interactively, they are temporarily saved to `tidygate_env$gates`
 gate_interactive <-
-  function(x, y, colour = NULL, shape = NULL, alpha = 1, size = 2) {
+  function(x, y, colour = NULL, shape = NULL, alpha = 1, size = 2, rasterise_points = FALSE) {
     
     # Check input values are valid
     if (!rlang::quo_is_null(shape)) {
@@ -291,6 +297,7 @@ gate_interactive <-
     plot <-
       data |>
       ggplot2::ggplot(ggplot2::aes(x = x, y = y, key = .key)) +
+      # ggrastr::rasterise(ggplot2::geom_point(), dpi = 5) +
       ggplot2::geom_point() +
       ggplot2::labs(x = rlang::quo_name(x), y = rlang::quo_name(y)) +
       theme_bw()
@@ -362,6 +369,48 @@ gate_interactive <-
           ggplot2::guides(size = "none")
       }
     }
+
+    # # Rasterise plot
+  if (rasterise_points == TRUE) {
+
+    # Create version of plot with no borders, axis or margins
+    plot <-
+      plot +
+      ggplot2::theme_void() +  # Remove background, axes, etc.
+      theme(
+        plot.margin = ggplot2::margin(0, 0, 0, 0),  # Remove any plot margins
+        legend.position = "none"
+      )
+
+      # Save plot as image
+      temp_file <-  
+        tempfile(fileext = ".png")
+
+      temp_file |>
+        ggsave(plot = plot, width = 8, height = 8, dpi = 300)
+
+      # Create plot with only borders, axis and margins
+      plot_empty <-
+        data |>
+        ggplot2::ggplot(ggplot2::aes(x = x, y = y, key = .key)) +
+        ggplot2::theme_minimal()
+
+      # Combine plots
+      plot <-
+        plot_empty |>
+        plotly::ggplotly(tooltip = NULL) |>
+        plotly::layout(images = list(
+          list(
+            source = xfun::base64_uri(temp_file),
+            x = 0, y = 1, xref = "paper", yref = "paper",  # Positioning
+            sizex = 1, sizey = 1,
+            xanchor = "left", yanchor = "top",
+            sizing = "stretch"
+          )),
+        dragmode = "lasso"
+        ) |>
+        plotly::config(modeBarButtonsToRemove = c("zoomIn2d", "zoomOut2d", "select2d", "pan2d")) 
+    }
     
     # Create environment and save input variables
     tidygate_env <<- rlang::env()
@@ -380,6 +429,12 @@ gate_interactive <-
       shiny::runApp(app, port = 1234) |> 
       purrr::map_chr(~ .x |> paste(collapse = ",")) |>
       purrr::map_chr(~ ifelse(.x == "", NA, .x))
+
+    # Gate point programmatically now if using rasterisation
+    if (rasterise_points == TRUE) {
+      gate_vector <-
+        gate_programmatic(x = data$x, y = data$y, programmatic_gates = tidygate_env$gates)
+    }
     
     message("tidygate says: interactively drawn gates are temporarily saved to tidygate_env$gates")
     return(gate_vector)
@@ -473,11 +528,11 @@ gate_programmatic <-
 #'   mutate(gated = gate(x = mpg, y = wt, programmatic_gates = demo_gate_data))
 #' @export
 gate <-
-  function(x, y, colour = NULL, shape = NULL, alpha = 1, size = 2, programmatic_gates = NULL) {
+  function(x, y, colour = NULL, shape = NULL, alpha = 1, size = 2, rasterise_points = FALSE, programmatic_gates = NULL) {
     
     if (is.null(programmatic_gates)) {
       gate_interactive(x = enquo(x), y = enquo(y), colour = enquo(colour), shape = enquo(shape), 
-                       alpha = enquo(alpha), size = enquo(size))
+                       alpha = enquo(alpha), size = enquo(size), rasterise_points = rasterise_points)
     } else {
       gate_programmatic(x = x, y = y, programmatic_gates = programmatic_gates)
     }
