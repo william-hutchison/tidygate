@@ -61,7 +61,7 @@ By default, `gate` creates an interactive scatter plot based on user-defined X a
 Once the plot has been created, multiple gates can be drawn with the mouse. When you have finished, click continue. `gate` will then return a vector of strings, recording the gates each X and Y coordinate pair is within.
 
 ```{r eval=FALSE}
-mtcars_gated <- 
+mtcars_gated <-
   mtcars |>
   mutate(gated = gate(x = mpg, y = wt, colour = disp))
 ```

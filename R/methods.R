@@ -228,10 +228,13 @@ gate_int.numeric = 	function(  .dim1,
 #' point alpha, either a numeric or factor of 6 or less levels.
 #' @param size A single ggplot2 size numeric ranging from 0 to 20. Or, a vector representing the 
 #' point size, either a numeric or factor of 6 or less levels.
+#' @param rasterise_points A logical. If TRUE, points are rasterised to an image before interactive 
+#' gating is launched, improving performance for large datasets. Some interactive features are 
+#' unavailable with rasterisation enabled.
 #' @return A vector of strings, of the gates each X and Y coordinate pair is within. If gates are
 #' drawn interactively, they are temporarily saved to `tidygate_env$gates`
 gate_interactive <-
-  function(x, y, colour = NULL, shape = NULL, alpha = 1, size = 2, rasterise_points = FALSE) {
+  function(x, y, colour, shape, alpha, size, rasterise_points) {
     
     # Check input values are valid
     if (!rlang::quo_is_null(shape)) {
@@ -310,8 +313,7 @@ gate_interactive <-
       if (rlang::quo_is_symbol(colour)) { 
         plot <- 
           plot + 
-          ggplot2::aes(colour = !!colour) +
-          ggplot2::scale_colour_distiller(palette = "Spectral")
+          ggplot2::aes(colour = !!colour)
         
       # Set to equal constant if not a column symbol and remove legend
       } else { 
@@ -371,15 +373,15 @@ gate_interactive <-
       }
     }
 
-    # # Rasterise plot
+  # Create rasterised plot and convert to plotly
   if (rasterise_points == TRUE) {
 
-    # Create version of plot with no borders, axis or margins
+    # Create version of plot with no borders, axis, margins or legends
     plot <-
       plot +
-      ggplot2::theme_void() +  # Remove background, axes, etc.
-      theme(
-        plot.margin = ggplot2::margin(0, 0, 0, 0),  # Remove any plot margins
+      ggplot2::theme_void() +
+      ggplot2::theme(
+        plot.margin = ggplot2::margin(0, 0, 0, 0), 
         legend.position = "none"
       )
 
@@ -388,15 +390,14 @@ gate_interactive <-
         tempfile(fileext = ".png")
 
       temp_file |>
-        ggplot2::ggsave(plot = plot, width = 8, height = 8, dpi = 300)
+        ggplot2::ggsave(plot = plot, width = 5, height = 5, dpi = 300)
 
-      # Create plot with only borders, axis and margins
+      # Create plot with only borders, axis, margins and legends
       plot_empty <-
         data |>
         ggplot2::ggplot(ggplot2::aes(x = x, y = y, key = .key, colour = !!colour, shape = !!shape, alpha = !!alpha, size = !!size)) +
         ggplot2::geom_point(alpha = 0) +
-        ggplot2::scale_colour_distiller(palette = "Spectral") +
-        ggplot2::theme_bw() 
+        ggplot2::theme_bw()
 
       # Combine plots
       plot <-
@@ -405,14 +406,24 @@ gate_interactive <-
         plotly::layout(images = list(
           list(
             source = xfun::base64_uri(temp_file),
-            x = 0, y = 1, xref = "paper", yref = "paper",  # Positioning
+            x = 0, y = 1, xref = "paper", yref = "paper",
             sizex = 1, sizey = 1,
             xanchor = "left", yanchor = "top",
             sizing = "stretch"
           )),
         dragmode = "lasso"
         ) |>
-        plotly::config(modeBarButtonsToRemove = c("zoomIn2d", "zoomOut2d", "select2d", "pan2d")) 
+
+        # Prevent any actions which could disalign points and plot
+        plotly::config(modeBarButtonsToRemove = c("zoom2d", "zoomIn2d", "zoomOut2d", "pan2d", "autoScale2d", "resetScale2d", "hoverClosestCartesian", "hoverCompareCartesian", "select2d"))
+    
+    # Convert ggplot directly to plotly
+    } else {
+      plot <-
+        plot |>
+        plotly::ggplotly(tooltip = NULL) |>
+        plotly::layout(dragmode = "lasso") |>
+        plotly::config(modeBarButtonsToRemove = c("select2d", "hoverClosestCartesian", "hoverCompareCartesian"))
     }
     
     # Create environment and save input variables
@@ -433,12 +444,6 @@ gate_interactive <-
       purrr::map_chr(~ .x |> paste(collapse = ",")) |>
       purrr::map_chr(~ ifelse(.x == "", NA, .x))
 
-    # Gate point programmatically now if using rasterisation
-    if (rasterise_points == TRUE) {
-      gate_vector <-
-        gate_programmatic(x = data$x, y = data$y, programmatic_gates = tidygate_env$gates)
-    }
-    
     message("tidygate says: interactively drawn gates are temporarily saved to tidygate_env$gates")
     return(gate_vector)
   }
@@ -511,6 +516,9 @@ gate_programmatic <-
 #' point alpha, either a numeric or factor of 6 or less levels.
 #' @param size A single ggplot2 size numeric ranging from 0 to 20. Or, a vector representing the 
 #' point size, either a numeric or factor of 6 or less levels.
+#' @param rasterise_points A logical. If TRUE, points are rasterised to an image before interactive 
+#' gating is launched, improving performance for large datasets. Some interactive features are 
+#' unavailable with rasterisation enabled.
 #' @param programmatic_gates A `data.frame` of the gate brush data, as saved in 
 #' `tidygate_env$gates`. The column `x` records X coordinates, the column `y` records Y coordinates and the column `.gate` 
 #' records the gate number. When this argument is supplied, gates will be drawn programmatically.
